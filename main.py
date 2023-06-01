@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import re
 import numpy as np
+import vpython
+import sys
 
 class Point:
     def __init__(self,x,y,z):
@@ -36,8 +38,9 @@ class Segment:
         return Point(dx, dy, dz)
 
 class Polygon:
-    def __init__(self, points: list[Point]):
+    def __init__(self, points: list[Point], normal: Point):
         self.points = points
+        self.normal = normal
     
     def get_edges(self) -> list[Segment]:
         edges = []
@@ -49,30 +52,42 @@ class Polygon:
 class ParserState:
     WaitingPoint = 0
     ReadingPoint = 1
+    WaitingNormal = 2
 
 def parse_stl(filename: str) -> list[Polygon]:
     regex_point = re.compile(r"(.+)?vertex (?P<x>-?\d+\.\d+) (?P<y>-?\d+\.\d+) (?P<z>-?\d+\.\d+)")
+    regex_normal = re.compile(r"(.+)?facet normal (?P<x>-?\d+\.\d+) (?P<y>-?\d+\.\d+) (?P<z>-?\d+\.\d+)")
     polys = []
     with open(filename, mode='r') as file:
-        state = ParserState.WaitingPoint
+        state = ParserState.WaitingNormal
         points = []
+        normal = None
         for row in file:
+            if state == ParserState.WaitingNormal:
+                r = regex_normal.match(row)
+                if r:
+                    d = r.groupdict()
+                    x = global_round(float(d["x"]))
+                    y = global_round(float(d["y"]))
+                    z = global_round(float(d["z"]))
+                    normal = Point(x,y,z)
+                    state = ParserState.WaitingPoint
+                continue
             if state == ParserState.WaitingPoint:
                 if "outer loop" in row:
                     state = ParserState.ReadingPoint
                 continue
             if state == ParserState.ReadingPoint:
-                if "vertex" in row:
-                    r = regex_point.match(row)
-                    if r:
-                        d = r.groupdict()
-                        x = global_round(float(d["x"]))
-                        y = global_round(float(d["y"]))
-                        z = global_round(float(d["z"]))
-                        points.append(Point(x,y,z))
+                r = regex_point.match(row)
+                if r:
+                    d = r.groupdict()
+                    x = global_round(float(d["x"]))
+                    y = global_round(float(d["y"]))
+                    z = global_round(float(d["z"]))
+                    points.append(Point(x,y,z))
                 if "endloop" in row:
-                    if len(points) == 3: 
-                        polys.append(Polygon(points))
+                    if len(points) == 3:
+                        polys.append(Polygon(points, normal))
                     points = []
                     state = ParserState.WaitingPoint
                 continue
@@ -105,11 +120,11 @@ def intersect_polygon_plane(poly: Polygon, z_level: float) -> list[Segment]:
     if(points_n == 3): return Polygon(no_duplicate_points).get_edges()
     return []
 
-def draw_layer(layer: list[Segment], ax):
+def draw_layer(layer: list[Segment]):
     for segment in layer:
-        # ax.scatter(segment.p.x, segment.p.y, segment.p.z)
-        # ax.scatter(segment.q.x, segment.q.y, segment.q.z)
-        ax.plot([segment.p.x, segment.q.x], [segment.p.y, segment.q.y], [segment.p.z, segment.q.z], color='blue')
+        vpython.sphere(pos=vpython.vector(segment.p.x, segment.p.y, segment.p.z),radius=0.02)
+        vpython.sphere(pos=vpython.vector(segment.q.x, segment.q.y, segment.q.z),radius=0.02)
+        vpython.curve(vpython.vector(segment.p.x, segment.p.y, segment.p.z), vpython.vector(segment.q.x, segment.q.y, segment.q.z))
 
 def remove_duplicates(list):
     no_duplicates_list = []
@@ -184,11 +199,12 @@ def global_round(val: float) -> float:
     return round(val, 6)
 
 def main():
-    model = parse_stl("examples/example5.stl")
+    if len(sys.argv)<2:
+        print("STL file is missing")
+        return
+    filename = sys.argv[1]
+    model = parse_stl(filename)
     layers = dict()
-    fig = plt.figure()
-    # plt.autoscale(False)
-    ax = fig.add_subplot(projection='3d')      
     model_edges = flatten([poly.get_edges() for poly in model])
     model_z_values = flatten([[edge.p.z, edge.q.z] for edge in model_edges])
     model_x_values = flatten([[edge.p.x, edge.q.x] for edge in model_edges])
@@ -215,35 +231,21 @@ def main():
             layers[key] += segments
         layers[key] = remove_duplicates(layers[key])
         non_optimized_layers+=len(layers[key])
-        print("Original Layer [{}] has {} edges".format(key, len(layers[key])))
+        # print("Original Layer [{}] has {} edges".format(key, len(layers[key])))
         layers[key] = optimize_segments(layers[key])
-        print("Optimized Layer [{}] has {} edges".format(key, len(layers[key])))
+        # print("Optimized Layer [{}] has {} edges".format(key, len(layers[key])))
         optimized_layers+=len(layers[key])
     
     print("Non optimized model contains {} segments".format(non_optimized_layers))
     print("Optimized model layers {} segments".format(optimized_layers))
         
-    axfreq = fig.add_axes([0.1,0.85,0.8,0.1])
-    z_slider = Slider(
-        ax=axfreq,
-        label='Layer (z)',
-        valmin=min_z,
-        valmax=max_z,
-        valinit=min_z,
-        valstep=step
-    )
-
     def update_chart(val):
-        ax.cla()
-        ax.set_xlim(min_lim, max_lim)
-        ax.set_ylim(min_lim, max_lim)
-        ax.set_zlim(min_lim, max_lim)
         keys = [key for key in layers.keys() if float(key)<=val]
         for k in keys:
-            draw_layer(layers[k], ax)
-    
-    update_chart(min_lim)
+            draw_layer(layers[k])
 
-    z_slider.on_changed(update_chart)
-    plt.show()
+    scene = vpython.canvas(width=1500, height=1500)
+    update_chart(max_lim)
+    while True:
+        pass
 main()
