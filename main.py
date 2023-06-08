@@ -1,11 +1,13 @@
 
 # https://github.com/stephenyeargin/stl-files
 
+import vpython
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import re
 import numpy as np
 import sys
+from math import atan2
 
 class Point:
     def __init__(self,x,y,z):
@@ -115,7 +117,6 @@ def intersect_polygon_plane(poly: Polygon, z_level: float) -> list[Segment]:
     no_duplicate_points = remove_duplicates(points)
     points_n = len(no_duplicate_points)
     if(points_n == 2): return [Segment(no_duplicate_points[0], no_duplicate_points[1])]
-    if(points_n == 3): return Polygon(no_duplicate_points).get_edges()
     return []
 
 def draw_layer(layer: list[Segment]):
@@ -131,6 +132,9 @@ def remove_duplicates(list):
             no_duplicates_list.append(elem)
     return no_duplicates_list
 
+# create a list of polygons using the available segments. A segment cannot compose more than 1 polygon.
+# segments that belong to the same line (so they are consecutive and parallel), are merged into a single segment 
+# If there is a segment that is shared between two polygons, throw an exception
 def polygons_from_segments(segments: list[Segment]):
     if len(segments) == 0: return []
     edges = segments
@@ -179,6 +183,7 @@ def polygons_from_segments(segments: list[Segment]):
                     polygon_edges[0] = merge_consecutive_parallel(polygon_edges[0], current_edge)
                     polygon_edges.pop(-1)
                 points = remove_duplicates(flatten([[s.p,s.q] for s in polygon_edges]))
+                points = sort_clockwise(points)
                 polygons.append(Polygon(points))
                 # print("new polygon: length {}".format(len(points)))
                 if len(edges) == 0: break
@@ -201,6 +206,18 @@ def merge_consecutive_parallel(s1: Segment, s2: Segment) -> Segment:
         return Segment(s2.p, s1.q)
     else:
         return Segment(s2.q, s1.q)
+
+def centroid(points: list[Point]) -> Point:
+     x_list = [vertex.x for vertex in points]
+     y_list = [vertex.y for vertex in points]
+     l = len(points)
+     x = sum(x_list) / l
+     y = sum(y_list) / l
+     return Point(x, y, 0)
+
+def sort_clockwise(points: list[Point]) -> list[Point]:
+    c = centroid(points)
+    return sorted(points, key=lambda p: atan2(p.y - c.y, p.x - c.x))
 
 def check_consecutive(s1: Segment, s2: Segment) -> bool:
     return s1.q == s2.p or s1.p == s2.q or s1.q == s2.q or s1.p == s2.p
@@ -230,16 +247,8 @@ def main():
     layers = dict()
     model_edges = flatten([poly.get_edges() for poly in model])
     model_z_values = flatten([[edge.p.z, edge.q.z] for edge in model_edges])
-    model_x_values = flatten([[edge.p.x, edge.q.x] for edge in model_edges])
-    model_y_values = flatten([[edge.p.y, edge.q.y] for edge in model_edges])
     min_z = min(model_z_values)
     max_z = max(model_z_values)
-    min_x = min(model_x_values)
-    max_x = max(model_x_values)
-    min_y = min(model_y_values)
-    max_y = max(model_y_values)
-    max_lim = max(max_x, max_y, max_z)
-    min_lim = min(min_x, min_y, min_z)
 
     # we need to create a layer every 0.1 mm (finest printing), so the step is 0.0001
     non_optimized_layers = 0
@@ -266,13 +275,14 @@ def main():
     # print("Non optimized model contains {} segments".format(non_optimized_layers))
     # print("Optimized model layers {} segments".format(optimized_layers))
         
-    # def update_chart(val):
-    #     keys = [key for key in layers.keys() if float(key)<=val]
-    #     for k in keys:
-    #         draw_layer(layers[k])
+    def update_chart(val):
+        keys = [key for key in layers.keys() if float(key)<=val]
+        for k in keys:
+            for p in layers[k]:
+                draw_layer(p.get_edges())
 
-    # scene = vpython.canvas(width=1500, height=1500)
-    # update_chart(max_lim)
-    # while True:
-    #     pass
+    vpython.canvas(width=1500, height=1500)
+    update_chart(max_z)
+    while True:
+        pass
 main()
