@@ -131,7 +131,6 @@ def remove_duplicates(list):
             no_duplicates_list.append(elem)
     return no_duplicates_list
 
-# TODO check if the last edge of the polygon has shared point with the first edge. If so, create a polygon, otherwise it's an open polyline
 def polygons_from_segments(segments: list[Segment]):
     if len(segments) == 0: return []
     edges = segments
@@ -227,40 +226,43 @@ def main():
         print("STL file is missing")
         return
     filename = sys.argv[1]
-    # model = parse_stl(filename)
-    # layers = dict()
-    # model_edges = flatten([poly.get_edges() for poly in model])
-    # model_z_values = flatten([[edge.p.z, edge.q.z] for edge in model_edges])
-    # model_x_values = flatten([[edge.p.x, edge.q.x] for edge in model_edges])
-    # model_y_values = flatten([[edge.p.y, edge.q.y] for edge in model_edges])
-    # min_z = min(model_z_values)
-    # max_z = max(model_z_values)
-    # min_x = min(model_x_values)
-    # max_x = max(model_x_values)
-    # min_y = min(model_y_values)
-    # max_y = max(model_y_values)
-    # max_lim = max(max_x, max_y, max_z)
-    # min_lim = min(min_x, min_y, min_z)
+    model = parse_stl(filename)
+    layers = dict()
+    model_edges = flatten([poly.get_edges() for poly in model])
+    model_z_values = flatten([[edge.p.z, edge.q.z] for edge in model_edges])
+    model_x_values = flatten([[edge.p.x, edge.q.x] for edge in model_edges])
+    model_y_values = flatten([[edge.p.y, edge.q.y] for edge in model_edges])
+    min_z = min(model_z_values)
+    max_z = max(model_z_values)
+    min_x = min(model_x_values)
+    max_x = max(model_x_values)
+    min_y = min(model_y_values)
+    max_y = max(model_y_values)
+    max_lim = max(max_x, max_y, max_z)
+    min_lim = min(min_x, min_y, min_z)
 
     # we need to create a layer every 0.1 mm (finest printing), so the step is 0.0001
-    # non_optimized_layers = 0
-    # optimized_layers = 0
-    # step = 0.1
-    # for z in np.arange(min_z, max_z, step):
-    #     z = round(z, 5)
-    #     key = str(z)
-    #     layers[key] = []
-    #     for poly in model:
-    #         segments = intersect_polygon_plane(poly, z)
-    #         layers[key] += segments
-    #     layers[key] = remove_duplicates(layers[key])
-    #     non_optimized_layers+=len(layers[key])
+    non_optimized_layers = 0
+    optimized_layers = 0
+    step = 0.1
+    for z in np.arange(min_z, max_z, step):
+        z = global_round(z)
+        key = str(z)
+        layers[key] = []
+        layer_segments = []
+        for poly in model:
+            segments = intersect_polygon_plane(poly, z)
+            layer_segments += segments
+        layer_segments = remove_duplicates(layer_segments)
+        print("Segments found: ",len(layer_segments))
+        # non_optimized_layers+=len(layers[key])
         # print("Original Layer [{}] has {} edges".format(key, len(layers[key])))
-        # layers[key] = optimize_segments(layers[key])
-
-        # print("Optimized Layer [{}] has {} edges".format(key, len(layers[key])))
-    #     optimized_layers+=len(layers[key])
-    
+        try:
+            layers[key] = polygons_from_segments(layer_segments)
+            print("Polygons found: ",len(layers[key]))
+        except Exception as e:
+            print(e)
+            exit()    
     # print("Non optimized model contains {} segments".format(non_optimized_layers))
     # print("Optimized model layers {} segments".format(optimized_layers))
         
