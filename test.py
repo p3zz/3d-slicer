@@ -1,5 +1,5 @@
 import unittest
-from main import intersect_segment_plane, intersect_polygon_plane, check_consecutive, check_parallel, Segment, Point, Polygon, polygons_from_segments
+from main import intersect_segment_plane, intersect_polygon_plane, check_consecutive, check_parallel, Segment, Point, Polygon, surfaces_from_segments
 
 class TestGeometry(unittest.TestCase):
 
@@ -115,19 +115,19 @@ class TestGeometry(unittest.TestCase):
     
     def test_optimize_segments_1(self):
         segments = [Segment(Point(0,0,0), Point(1,0,0)), Segment(Point(1,0,0), Point(2,0,0))]
-        result = polygons_from_segments(segments)
+        result = surfaces_from_segments(segments)
         self.assertEqual(len(result),0) 
     
     def test_optimize_segments_2(self):
         segments = [Segment(Point(0,0,0), Point(1,0,0)), Segment(Point(1,0,0), Point(2,0,0)), Segment(Point(-1,0,0), Point(0,0,0))]
-        result = polygons_from_segments(segments)
+        result = surfaces_from_segments(segments)
         self.assertEqual(len(result),0)
 
     def test_optimize_segments_3(self):
         segments = [Segment(Point(0,0,0), Point(1,0,0)), Segment(Point(1,0,0), Point(1,1,0)), Segment(Point(1,1,0), Point(0,0,0)), Segment(Point(-4,0,0), Point(-2,0,0))]
-        result = polygons_from_segments(segments)
+        result = surfaces_from_segments(segments)
         self.assertEqual(len(result),1)
-        self.assertEqual(len(result[0].get_edges()),3)
+        self.assertEqual(len(result[0].poly.get_edges()),3)
     
     def test_optimize_segments_4(self):
 
@@ -145,10 +145,10 @@ class TestGeometry(unittest.TestCase):
             Segment(Point(2,-1,0), Point(2,-3,0)),
             Segment(Point(6,0,0), Point(7,0,0)),
         ]
-        result = polygons_from_segments(segments)
+        result = surfaces_from_segments(segments)
         self.assertEqual(len(result), 2)
-        self.assertEqual(len(result[1].get_edges()), 5)
-        self.assertEqual(len(result[0].get_edges()), 3)
+        self.assertEqual(len(result[1].poly.get_edges()), 5)
+        self.assertEqual(len(result[0].poly.get_edges()), 3)
     
     def test_optimize_segments_5(self):
         segments = [
@@ -175,11 +175,11 @@ class TestGeometry(unittest.TestCase):
             Segment(Point( 1.846087, -1.846087,-0.01099), Point(1.846087, -1.94967,-0.01099)),
             Segment(Point( 1.846087, -1.94967,-0.01099), Point(1.846087, -2.076021,-0.01099))
         ]
-        result = polygons_from_segments(segments)
+        result = surfaces_from_segments(segments)
         self.assertEqual(len(result), 1)
-        self.assertEqual(len(result[0].get_edges()), 4)
+        self.assertEqual(len(result[0].poly.get_edges()), 4)
 
 def main():
     unittest.main()
 
-main()
+# main()

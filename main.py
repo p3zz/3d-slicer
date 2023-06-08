@@ -7,7 +7,7 @@ from matplotlib.widgets import Slider
 import re
 import numpy as np
 import sys
-from math import atan2
+from math import atan2, pi, sqrt, acos
 
 class Point:
     def __init__(self,x,y,z):
@@ -22,9 +22,10 @@ class Point:
         return 'x: {} y: {} z: {}'.format(self.x, self.y, self.z)
 
 class Segment:
-    def __init__(self, p: Point, q: Point):
+    def __init__(self, p: Point, q: Point, normal: Point):
         self.p = p
         self.q = q
+        self.normal = normal
     
     def __eq__(self, value: object) -> bool:
         return (self.p == value.p and self.q == value.q) or (self.p == value.q and self.q == value.p)
@@ -39,15 +40,21 @@ class Segment:
         return Point(dx, dy, dz)
 
 class Polygon:
-    def __init__(self, points: list[Point]):
+    def __init__(self, points: list[Point], normal: Point):
         self.points = points
+        self.normal = normal
     
     def get_edges(self) -> list[Segment]:
         edges = []
         for i in range(0, len(self.points)-1):
-            edges.append(Segment(self.points[i], self.points[i+1]))
-        edges.append(Segment(self.points[-1], self.points[0]))
+            edges.append(Segment(self.points[i], self.points[i+1], self.normal))
+        edges.append(Segment(self.points[-1], self.points[0], self.normal))
         return edges
+
+class Surface:
+    def __init__(self, poly: Polygon, fill: bool):
+        self.poly = poly
+        self.fill = fill
 
 class ParserState:
     WaitingPoint = 0
@@ -70,6 +77,7 @@ def parse_stl(filename: str) -> list[Polygon]:
                     x = global_round(float(d["x"]))
                     y = global_round(float(d["y"]))
                     z = global_round(float(d["z"]))
+                    print(x,y,z)
                     normal = Point(x,y,z)
                     state = ParserState.WaitingPoint
                 continue
@@ -87,9 +95,10 @@ def parse_stl(filename: str) -> list[Polygon]:
                     points.append(Point(x,y,z))
                 if "endloop" in row:
                     if len(points) == 3:
-                        polys.append(Polygon(points))
+                        # print(normal)
+                        polys.append(Polygon(points, normal))
                     points = []
-                    state = ParserState.WaitingPoint
+                    state = ParserState.WaitingNormal
                 continue
     file.close()
     return polys
@@ -113,10 +122,11 @@ def intersect_segment_plane(edge: Segment, z_level: float) -> list[Point]:
     return [Point(x,y,z)]
 
 def intersect_polygon_plane(poly: Polygon, z_level: float) -> list[Segment]:
+    # print(poly.normal)
+    if poly.normal.x == 0 and poly.normal.y == 0: return []
     points = flatten(list(map(lambda edge : intersect_segment_plane(edge, z_level), poly.get_edges())))
     no_duplicate_points = remove_duplicates(points)
-    points_n = len(no_duplicate_points)
-    if(points_n == 2): return [Segment(no_duplicate_points[0], no_duplicate_points[1])]
+    if len(no_duplicate_points) == 2: return [Segment(no_duplicate_points[0], no_duplicate_points[1], poly.normal)]
     return []
 
 def draw_layer(layer: list[Segment]):
@@ -135,12 +145,12 @@ def remove_duplicates(list):
 # create a list of polygons using the available segments. A segment cannot compose more than 1 polygon.
 # segments that belong to the same line (so they are consecutive and parallel), are merged into a single segment 
 # If there is a segment that is shared between two polygons, throw an exception
-def polygons_from_segments(segments: list[Segment]):
+def surfaces_from_segments(segments: list[Segment]):
     if len(segments) == 0: return []
     edges = segments
     current_edge = edges.pop(0)
     polygon_edges: list[Segment] = [current_edge]
-    polygons: list[Polygon] = []
+    surfaces: list[Surface] = []
 
     while len(edges)>=0:
         # search for edges that have a point in common with the current new edge
@@ -176,9 +186,13 @@ def polygons_from_segments(segments: list[Segment]):
                 if check_parallel(polygon_edges[0], current_edge):
                     polygon_edges[0] = merge_consecutive_parallel(polygon_edges[0], current_edge)
                     polygon_edges.pop(-1)
+                normal = Segment(Point(0,0,0), polygon_edges[0].normal, polygon_edges[0].normal)
+                fill = angle_between_segments(polygon_edges[0], normal) < pi
+                print(angle_between_segments(polygon_edges[0], normal))
                 points = remove_duplicates(flatten([[s.p,s.q] for s in polygon_edges]))
                 points = sort_clockwise(points)
-                polygons.append(Polygon(points))
+                poly = Polygon(points, Point(0,0,0))
+                surfaces.append(Surface(poly, fill))
                 if len(edges) == 0: break
                 current_edge = edges.pop(0)
                 polygon_edges = [current_edge]
@@ -187,17 +201,17 @@ def polygons_from_segments(segments: list[Segment]):
             current_edge = edges.pop(0)
             polygon_edges = [current_edge]
 
-    return polygons
+    return surfaces
 
 def merge_consecutive_parallel(s1: Segment, s2: Segment) -> Segment:
     if s1.q == s2.p:
-        return Segment(s1.p, s2.q)
+        return Segment(s1.p, s2.q, s1.normal)
     elif s1.q == s2.q:
-        return Segment(s1.p, s2.p)
+        return Segment(s1.p, s2.p, s1.normal)
     elif s1.p == s2.q:
-        return Segment(s2.p, s1.q)
+        return Segment(s2.p, s1.q, s1.normal)
     else:
-        return Segment(s2.q, s1.q)
+        return Segment(s2.q, s1.q, s1.normal)
 
 def centroid(points: list[Point]) -> Point:
      x_list = [vertex.x for vertex in points]
@@ -230,6 +244,24 @@ def check_parallel(s1: Segment, s2: Segment) -> bool:
 def global_round(val: float) -> float:
     return round(val, 6)
 
+def angle_between_segments(s1: Segment, s2: Segment):
+    # Calculate the vectors of the line segments
+    u = s1.get_displacement()
+    v = s2.get_displacement()
+
+    # Calculate the dot product of the vectors
+    dot_product = u.x * v.x + u.y * v.y
+
+    # Calculate the lengths of the vectors
+    length_u = sqrt(u.x ** 2 + u.y ** 2)
+    length_v = sqrt(v.x ** 2 + v.y ** 2)
+
+    if length_u == 0 or length_v == 0:
+        return None
+
+    # Calculate the angle between the vectors using the dot product formula
+    return acos(dot_product / (length_u * length_v))
+
 def main():
     if len(sys.argv)<2:
         print("STL file is missing")
@@ -245,7 +277,7 @@ def main():
     # we need to create a layer every 0.1 mm (finest printing), so the step is 0.0001
     non_optimized_layers = 0
     optimized_layers = 0
-    step = 0.1
+    step = 0.05
     for z in np.arange(min_z, max_z, step):
         z = global_round(z)
         key = str(z)
@@ -259,11 +291,13 @@ def main():
         # non_optimized_layers+=len(layers[key])
         # print("Original Layer [{}] has {} edges".format(key, len(layers[key])))
         try:
-            layers[key] = polygons_from_segments(layer_segments)
+            layers[key] = surfaces_from_segments(layer_segments)
             print("Polygons found: ",len(layers[key]))
+            for surf in layers[key]:
+                print("len {} infill {}".format(len(surf.poly.get_edges()), surf.fill))
         except Exception as e:
             print(e)
-            exit()    
+            continue   
     # print("Non optimized model contains {} segments".format(non_optimized_layers))
     # print("Optimized model layers {} segments".format(optimized_layers))
         
@@ -271,7 +305,7 @@ def main():
         keys = [key for key in layers.keys() if float(key)<=val]
         for k in keys:
             for p in layers[k]:
-                draw_layer(p.get_edges())
+                draw_layer(p.poly.get_edges())
 
     vpython.canvas(width=1500, height=1500)
     update_chart(max_z)
