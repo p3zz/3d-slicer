@@ -156,26 +156,20 @@ def polygons_from_segments(segments: list[Segment]):
         else:
             found_edge = None
         
-        # print("Current edge: {}".format(current_edge))
         if found_edge is not None:
-            # print("Found edge: {}".format(found_edge))
             found_edge_idx = edges.index(found_edge)
             # if it's colinear we merge it with the current edge and we update the last edge of the polygon
             if check_parallel(current_edge, found_edge):
-                # print("merge add")
                 current_edge = merge_consecutive_parallel(current_edge, found_edge)
                 polygon_edges[-1] = current_edge
             # otherwise we add it as a normal edge of the current polygon
             else:
-                # print("plain add")
                 current_edge = found_edge
                 polygon_edges.append(found_edge)
             
             edges.pop(found_edge_idx)
-            # print("New current edge: {}".format(current_edge))          
             # then we check if the updated current edge is the end of the polygon
             # we need at least 3 edges to complete a polygon
-            # print("Check {} against {}".format(current_edge, polygon_edges[0]))
             if len(polygon_edges) > 2 and check_consecutive(polygon_edges[0], current_edge):
                 # it can happen that the last edged of the polygon and the first are colinear. In this case
                 # merge them and update the first edge, then delete the last edge
@@ -185,12 +179,10 @@ def polygons_from_segments(segments: list[Segment]):
                 points = remove_duplicates(flatten([[s.p,s.q] for s in polygon_edges]))
                 points = sort_clockwise(points)
                 polygons.append(Polygon(points))
-                # print("new polygon: length {}".format(len(points)))
                 if len(edges) == 0: break
                 current_edge = edges.pop(0)
                 polygon_edges = [current_edge]
         else:
-            # print("No edges found")
             if len(edges) == 0: break
             current_edge = edges.pop(0)
             polygon_edges = [current_edge]
