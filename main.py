@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import re
 import numpy as np
-import vpython
 import sys
 
 class Point:
@@ -38,9 +37,8 @@ class Segment:
         return Point(dx, dy, dz)
 
 class Polygon:
-    def __init__(self, points: list[Point], normal: Point):
+    def __init__(self, points: list[Point]):
         self.points = points
-        self.normal = normal
     
     def get_edges(self) -> list[Segment]:
         edges = []
@@ -87,7 +85,7 @@ def parse_stl(filename: str) -> list[Polygon]:
                     points.append(Point(x,y,z))
                 if "endloop" in row:
                     if len(points) == 3:
-                        polys.append(Polygon(points, normal))
+                        polys.append(Polygon(points))
                     points = []
                     state = ParserState.WaitingPoint
                 continue
@@ -133,41 +131,67 @@ def remove_duplicates(list):
             no_duplicates_list.append(elem)
     return no_duplicates_list
 
-def optimize_segments(segments: list[Segment]):
-    if len(segments) == 0:
-        return []
-    new_edges = []
+# TODO check if the last edge of the polygon has shared point with the first edge. If so, create a polygon, otherwise it's an open polyline
+def polygons_from_segments(segments: list[Segment]):
+    if len(segments) == 0: return []
     edges = segments
-    new_edge = edges.pop(0)
-    while len(edges)>0:
-        consecutive_edges_from_p = [edge for edge in edges if new_edge.p == edge.p or new_edge.p == edge.q]
-        consecutive_edges_from_q = [edge for edge in edges if new_edge.q == edge.p or new_edge.q == edge.q]
+    current_edge = edges.pop(0)
+    polygon_edges: list[Segment] = [current_edge]
+    polygons: list[Polygon] = []
 
-        consecutive_edges = []
-        # if there more than 1 consecutive edge from the same point of the segment we don't optimize
-        if len(consecutive_edges_from_p) == 1:
-            consecutive_edges.append(consecutive_edges_from_p[0])
-        if len(consecutive_edges_from_q) == 1:
-            consecutive_edges.append(consecutive_edges_from_q[0])
+    while len(edges)>=0:
+        # search for edges that have a point in common with the current new edge
+        consecutive_edges_from_q = [edge for edge in edges if current_edge.q == edge.p or current_edge.q == edge.q]
+        consecutive_edges_from_p = [edge for edge in edges if current_edge.p == edge.p or current_edge.p == edge.q]
+        # if the edge has more than 1 segment in common on one of the two ends, throw an exception
+        if len(consecutive_edges_from_p) > 1 or len(consecutive_edges_from_q) > 1:
+            raise Exception("Invalid mesh")
+        if len(consecutive_edges_from_p) == 1 and (len(consecutive_edges_from_q) == 0 or len(consecutive_edges_from_q) == 1):
+            found_edge = consecutive_edges_from_p[0]
+        elif len(consecutive_edges_from_p) == 0 and len(consecutive_edges_from_q) == 1:
+            found_edge = consecutive_edges_from_q[0]
+        else:
+            found_edge = None
         
-        merged = False
-        for e in consecutive_edges:
+        # print("Current edge: {}".format(current_edge))
+        if found_edge is not None:
+            # print("Found edge: {}".format(found_edge))
+            found_edge_idx = edges.index(found_edge)
+            # if it's colinear we merge it with the current edge and we update the last edge of the polygon
+            if check_parallel(current_edge, found_edge):
+                # print("merge add")
+                current_edge = merge_consecutive_parallel(current_edge, found_edge)
+                polygon_edges[-1] = current_edge
+            # otherwise we add it as a normal edge of the current polygon
+            else:
+                # print("plain add")
+                current_edge = found_edge
+                polygon_edges.append(found_edge)
+            
+            edges.pop(found_edge_idx)
+            # print("New current edge: {}".format(current_edge))          
+            # then we check if the updated current edge is the end of the polygon
+            # we need at least 3 edges to complete a polygon
+            # print("Check {} against {}".format(current_edge, polygon_edges[0]))
+            if len(polygon_edges) > 2 and check_consecutive(polygon_edges[0], current_edge):
+                # it can happen that the last edged of the polygon and the first are colinear. In this case
+                # merge them and update the first edge, then delete the last edge
+                if check_parallel(polygon_edges[0], current_edge):
+                    polygon_edges[0] = merge_consecutive_parallel(polygon_edges[0], current_edge)
+                    polygon_edges.pop(-1)
+                points = remove_duplicates(flatten([[s.p,s.q] for s in polygon_edges]))
+                polygons.append(Polygon(points))
+                # print("new polygon: length {}".format(len(points)))
+                if len(edges) == 0: break
+                current_edge = edges.pop(0)
+                polygon_edges = [current_edge]
+        else:
+            # print("No edges found")
             if len(edges) == 0: break
-            # we search inside the edges to retrieve the correct index but we also need to check if the edges are consecutive
-            c_parallel_edges = [i for i, edge in enumerate(edges) if check_parallel(new_edge, edge) and edge == e]
-            if len(c_parallel_edges) == 1:
-                idx = c_parallel_edges[0]
-                found_edge = edges[idx]
-                new_edge = merge_consecutive_parallel(new_edge, found_edge)
-                edges.pop(idx)
-                merged = True
-        
-        if not merged:
-            new_edges.append(new_edge)
-            new_edge = edges.pop(0)
-    
-    new_edges.append(new_edge)
-    return new_edges
+            current_edge = edges.pop(0)
+            polygon_edges = [current_edge]
+
+    return polygons
 
 def merge_consecutive_parallel(s1: Segment, s2: Segment) -> Segment:
     if s1.q == s2.p:
@@ -203,49 +227,50 @@ def main():
         print("STL file is missing")
         return
     filename = sys.argv[1]
-    model = parse_stl(filename)
-    layers = dict()
-    model_edges = flatten([poly.get_edges() for poly in model])
-    model_z_values = flatten([[edge.p.z, edge.q.z] for edge in model_edges])
-    model_x_values = flatten([[edge.p.x, edge.q.x] for edge in model_edges])
-    model_y_values = flatten([[edge.p.y, edge.q.y] for edge in model_edges])
-    min_z = min(model_z_values)
-    max_z = max(model_z_values)
-    min_x = min(model_x_values)
-    max_x = max(model_x_values)
-    min_y = min(model_y_values)
-    max_y = max(model_y_values)
-    max_lim = max(max_x, max_y, max_z)
-    min_lim = min(min_x, min_y, min_z)
+    # model = parse_stl(filename)
+    # layers = dict()
+    # model_edges = flatten([poly.get_edges() for poly in model])
+    # model_z_values = flatten([[edge.p.z, edge.q.z] for edge in model_edges])
+    # model_x_values = flatten([[edge.p.x, edge.q.x] for edge in model_edges])
+    # model_y_values = flatten([[edge.p.y, edge.q.y] for edge in model_edges])
+    # min_z = min(model_z_values)
+    # max_z = max(model_z_values)
+    # min_x = min(model_x_values)
+    # max_x = max(model_x_values)
+    # min_y = min(model_y_values)
+    # max_y = max(model_y_values)
+    # max_lim = max(max_x, max_y, max_z)
+    # min_lim = min(min_x, min_y, min_z)
 
     # we need to create a layer every 0.1 mm (finest printing), so the step is 0.0001
-    non_optimized_layers = 0
-    optimized_layers = 0
-    step = 0.1
-    for z in np.arange(min_z, max_z, step):
-        z = round(z, 5)
-        key = str(z)
-        layers[key] = []
-        for poly in model:
-            segments = intersect_polygon_plane(poly, z)
-            layers[key] += segments
-        layers[key] = remove_duplicates(layers[key])
-        non_optimized_layers+=len(layers[key])
+    # non_optimized_layers = 0
+    # optimized_layers = 0
+    # step = 0.1
+    # for z in np.arange(min_z, max_z, step):
+    #     z = round(z, 5)
+    #     key = str(z)
+    #     layers[key] = []
+    #     for poly in model:
+    #         segments = intersect_polygon_plane(poly, z)
+    #         layers[key] += segments
+    #     layers[key] = remove_duplicates(layers[key])
+    #     non_optimized_layers+=len(layers[key])
         # print("Original Layer [{}] has {} edges".format(key, len(layers[key])))
-        layers[key] = optimize_segments(layers[key])
-        # print("Optimized Layer [{}] has {} edges".format(key, len(layers[key])))
-        optimized_layers+=len(layers[key])
-    
-    print("Non optimized model contains {} segments".format(non_optimized_layers))
-    print("Optimized model layers {} segments".format(optimized_layers))
-        
-    def update_chart(val):
-        keys = [key for key in layers.keys() if float(key)<=val]
-        for k in keys:
-            draw_layer(layers[k])
+        # layers[key] = optimize_segments(layers[key])
 
-    scene = vpython.canvas(width=1500, height=1500)
-    update_chart(max_lim)
-    while True:
-        pass
+        # print("Optimized Layer [{}] has {} edges".format(key, len(layers[key])))
+    #     optimized_layers+=len(layers[key])
+    
+    # print("Non optimized model contains {} segments".format(non_optimized_layers))
+    # print("Optimized model layers {} segments".format(optimized_layers))
+        
+    # def update_chart(val):
+    #     keys = [key for key in layers.keys() if float(key)<=val]
+    #     for k in keys:
+    #         draw_layer(layers[k])
+
+    # scene = vpython.canvas(width=1500, height=1500)
+    # update_chart(max_lim)
+    # while True:
+    #     pass
 main()

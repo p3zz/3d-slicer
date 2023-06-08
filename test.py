@@ -1,5 +1,5 @@
 import unittest
-from main import intersect_segment_plane, intersect_polygon_plane, check_consecutive, check_parallel, Segment, Point, Polygon, optimize_segments
+from main import intersect_segment_plane, intersect_polygon_plane, check_consecutive, check_parallel, Segment, Point, Polygon, polygons_from_segments
 
 class TestGeometry(unittest.TestCase):
 
@@ -115,76 +115,40 @@ class TestGeometry(unittest.TestCase):
     
     def test_optimize_segments_1(self):
         segments = [Segment(Point(0,0,0), Point(1,0,0)), Segment(Point(1,0,0), Point(2,0,0))]
-        result = optimize_segments(segments)
-        self.assertEqual(len(result),1)
-        self.assertEqual(result[0],Segment(Point(0,0,0), Point(2,0,0)))
+        result = polygons_from_segments(segments)
+        self.assertEqual(len(result),0) 
     
     def test_optimize_segments_2(self):
         segments = [Segment(Point(0,0,0), Point(1,0,0)), Segment(Point(1,0,0), Point(2,0,0)), Segment(Point(-1,0,0), Point(0,0,0))]
-        result = optimize_segments(segments)
-        self.assertEqual(len(result),1)
-        self.assertEqual(result[0], Segment(Point(-1,0,0), Point(2,0,0)))
+        result = polygons_from_segments(segments)
+        self.assertEqual(len(result),0)
 
     def test_optimize_segments_3(self):
-        segments = [Segment(Point(0,0,0), Point(1,0,0)), Segment(Point(1,0,0), Point(2,0,0)), Segment(Point(-1,0,0), Point(0,0,0)), Segment(Point(-4,0,0), Point(-2,0,0))]
-        result = optimize_segments(segments)
-        self.assertEqual(len(result),2)
-        self.assertEqual(result[0], Segment(Point(-1,0,0), Point(2,0,0)))
-        self.assertEqual(result[1], Segment(Point(-4,0,0), Point(-2,0,0)))
-    
-    def test_optimize_segments_5(self):
-        segments = [
-            Segment(Point(1.846087, 1.846087, -0.01099), Point(1.846087, -0.182797, -0.01099))
-            ,Segment(Point(1.846087, -0.182797, -0.01099), Point(1.846087, -0.377563, -0.01099))
-            ,Segment(Point(1.846087, -1.846087, -0.01099), Point(1.846087, -1.244798, -0.01099))
-            ,Segment(Point(1.846087, -1.244798, -0.01099), Point(1.846087, -0.833369, -0.01099))
-            ,Segment(Point(1.846087, -0.377563, -0.01099), Point(1.846087, -0.729868, -0.01099))
-            ,Segment(Point(1.846087, -0.833369, -0.01099), Point(1.846087, -0.729868, -0.01099))
-        ]
-        result = optimize_segments(segments)
+        segments = [Segment(Point(0,0,0), Point(1,0,0)), Segment(Point(1,0,0), Point(1,1,0)), Segment(Point(1,1,0), Point(0,0,0)), Segment(Point(-4,0,0), Point(-2,0,0))]
+        result = polygons_from_segments(segments)
         self.assertEqual(len(result),1)
-        self.assertEqual(result[0], Segment(Point(1.846087, 1.846087, -0.01099), Point(1.846087, -1.846087, -0.01099)))
-    
-    def test_optimize_segments_6(self):
-        segments = [
-            Segment(Point(-1.846087, 1.846087, -0.01099), Point(0.182797, 1.846087, -0.01099))
-            ,Segment(Point(0.182797, 1.846087, -0.01099), Point(0.423130, 1.846087, -0.01099))
-            ,Segment(Point(1.846087, 1.846087, -0.01099), Point(1.507202, 1.846087, -0.01099))
-            ,Segment(Point(0.423130, 1.846087, -0.01099), Point(0.713858, 1.846087, -0.01099))
-            ,Segment(Point(1.507202, 1.846087, -0.01099), Point(0.713858, 1.846087, -0.01099))
-        ]
-        result = optimize_segments(segments)
-        self.assertEqual(len(result),1)        
-        self.assertEqual(result[0], Segment(Point(-1.846087, 1.846087, -0.01099), Point(1.846087, 1.846087, -0.01099)))
+        self.assertEqual(len(result[0].get_edges()),3)
     
     def test_optimize_segments_4(self):
 
         segments = [
-            Segment(Point(-1.846087, -1.846087, -0.01099), Point(-1.846087, -0.182797, -0.01099))
-            ,Segment(Point(-1.846087, -0.182797, -0.01099), Point(-1.846087, 1.846087, -0.01099))
-            ,Segment(Point(1.846087, 1.846087, -0.01099), Point(1.846087, -0.182797, -0.01099))
-            ,Segment(Point(1.846087, -0.182797, -0.01099), Point(1.846087, -0.377563, -0.01099))
-            ,Segment(Point(1.846087, -1.846087, -0.01099), Point(1.846087, -1.244798, -0.01099))
-            ,Segment(Point(1.846087, -1.244798, -0.01099), Point(1.846087, -0.833369, -0.01099))
-            ,Segment(Point(1.846087, -0.377563, -0.01099), Point(1.846087, -0.729868, -0.01099))
-            ,Segment(Point(1.846087, -0.833369, -0.01099), Point(1.846087, -0.729868, -0.01099))
-            ,Segment(Point(-1.846087, 1.846087, -0.01099), Point(0.182797, 1.846087, -0.01099))
-            ,Segment(Point(0.182797, 1.846087, -0.01099), Point(0.423130, 1.846087, -0.01099))
-            ,Segment(Point(1.846087, 1.846087, -0.01099), Point(1.507202, 1.846087, -0.01099))
-            ,Segment(Point(0.423130, 1.846087, -0.01099), Point(0.713858, 1.846087, -0.01099))
-            ,Segment(Point(1.507202, 1.846087, -0.01099), Point(0.713858, 1.846087, -0.01099))
-            ,Segment(Point(1.846087, -2.076021, -0.01099), Point(-0.182797, -2.076021, -0.01099))
-            ,Segment(Point(-0.182797, -2.076021, -0.01099), Point(-0.521682, -2.076021, -0.01099))
-            ,Segment(Point(-1.846087, -2.076021, -0.01099), Point(-1.608178, -2.076021, -0.01099))
-            ,Segment(Point(-0.521682, -2.076021, -0.01099), Point(-1.315026, -2.076021, -0.01099))
-            ,Segment(Point(-1.608178, -2.076021, -0.01099), Point(-1.315026, -2.076021, -0.01099))
-            ,Segment(Point(-1.846087, -1.846087, -0.01099), Point(-1.846087, -1.972437, -0.01099))
-            ,Segment(Point(-1.846087, -1.972437, -0.01099), Point(-1.846087, -2.076021, -0.01099))
-            ,Segment(Point(1.846087, -1.846087, -0.01099), Point(1.846087, -1.949670, -0.01099))
-            ,Segment(Point(1.846087, -1.949670, -0.01099), Point(1.846087, -2.076021, -0.01099))
+            Segment(Point(1,-1,0), Point(2,-3,0)),
+            Segment(Point(4,1,0), Point(4,2,0)),
+            Segment(Point(2,1,0), Point(3,1,0)),
+            Segment(Point(4,1,0), Point(3,1,0)),
+            Segment(Point(3,3,0), Point(2,4,0)),
+            Segment(Point(7,0,0), Point(8,0,0)),
+            Segment(Point(4,2,0), Point(3,3,0)),
+            Segment(Point(2,4,0), Point(1,3,0)),
+            Segment(Point(1,3,0), Point(2,1,0)),
+            Segment(Point(1,-1,0), Point(2,-1,0)),
+            Segment(Point(2,-1,0), Point(2,-3,0)),
+            Segment(Point(6,0,0), Point(7,0,0)),
         ]
-        result = optimize_segments(segments)
-        self.assertEqual(len(result), 4)
+        result = polygons_from_segments(segments)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(len(result[1].get_edges()), 5)
+        self.assertEqual(len(result[0].get_edges()), 3)
 
 def main():
     unittest.main()
