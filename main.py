@@ -52,8 +52,8 @@ class Polygon:
         return edges
 
 class Surface:
-    def __init__(self, poly: Polygon, fill: bool):
-        self.poly = poly
+    def __init__(self, points: list[Point], fill: bool):
+        self.points = points
         self.fill = fill
 
 class ParserState:
@@ -77,7 +77,6 @@ def parse_stl(filename: str) -> list[Polygon]:
                     x = global_round(float(d["x"]))
                     y = global_round(float(d["y"]))
                     z = global_round(float(d["z"]))
-                    print(x,y,z)
                     normal = Point(x,y,z)
                     state = ParserState.WaitingPoint
                 continue
@@ -149,7 +148,7 @@ def surfaces_from_segments(segments: list[Segment]):
     if len(segments) == 0: return []
     edges = segments
     current_edge = edges.pop(0)
-    polygon_edges: list[Segment] = [current_edge]
+    surface_edges: list[Segment] = [current_edge]
     surfaces: list[Surface] = []
 
     while len(edges)>=0:
@@ -171,34 +170,33 @@ def surfaces_from_segments(segments: list[Segment]):
             # if it's colinear we merge it with the current edge and we update the last edge of the polygon
             if check_parallel(current_edge, found_edge):
                 current_edge = merge_consecutive_parallel(current_edge, found_edge)
-                polygon_edges[-1] = current_edge
+                surface_edges[-1] = current_edge
             # otherwise we add it as a normal edge of the current polygon
             else:
                 current_edge = found_edge
-                polygon_edges.append(found_edge)
+                surface_edges.append(found_edge)
             
             edges.pop(found_edge_idx)
             # then we check if the updated current edge is the end of the polygon
             # we need at least 3 edges to complete a polygon
-            if len(polygon_edges) > 2 and check_consecutive(polygon_edges[0], current_edge):
+            if len(surface_edges) > 2 and check_consecutive(surface_edges[0], current_edge):
                 # it can happen that the last edged of the polygon and the first are colinear. In this case
                 # merge them and update the first edge, then delete the last edge
-                if check_parallel(polygon_edges[0], current_edge):
-                    polygon_edges[0] = merge_consecutive_parallel(polygon_edges[0], current_edge)
-                    polygon_edges.pop(-1)
-                normal = Segment(Point(0,0,0), polygon_edges[0].normal, polygon_edges[0].normal)
-                fill = angle_between_segments(polygon_edges[0], normal) < pi
-                points = remove_duplicates(flatten([[s.p,s.q] for s in polygon_edges]))
+                if check_parallel(surface_edges[0], current_edge):
+                    surface_edges[0] = merge_consecutive_parallel(surface_edges[0], current_edge)
+                    surface_edges.pop(-1)
+                normal = Segment(Point(0,0,0), surface_edges[0].normal, surface_edges[0].normal)
+                fill = angle_between_segments(surface_edges[0], normal) < pi
+                points = remove_duplicates(flatten([[s.p,s.q] for s in surface_edges]))
                 points = sort_clockwise(points)
-                poly = Polygon(points, Point(0,0,0))
-                surfaces.append(Surface(poly, fill))
+                surfaces.append(Surface(points, fill))
                 if len(edges) == 0: break
                 current_edge = edges.pop(0)
-                polygon_edges = [current_edge]
+                surface_edges = [current_edge]
         else:
             if len(edges) == 0: break
             current_edge = edges.pop(0)
-            polygon_edges = [current_edge]
+            surface_edges = [current_edge]
 
     return surfaces
 
@@ -222,7 +220,7 @@ def centroid(points: list[Point]) -> Point:
 
 def sort_clockwise(points: list[Point]) -> list[Point]:
     c = centroid(points)
-    return sorted(points, key=lambda p: atan2(p.y - c.y, p.x - c.x))
+    return sorted(points, key=lambda p: atan2(p.y - c.y, p.x - c.x), reverse=True)
 
 def check_consecutive(s1: Segment, s2: Segment) -> bool:
     return s1.q == s2.p or s1.p == s2.q or s1.q == s2.q or s1.p == s2.p
@@ -293,7 +291,7 @@ def main():
             layers[key] = surfaces_from_segments(layer_segments)
             print("Polygons found: ",len(layers[key]))
             for surf in layers[key]:
-                print("len {} infill {}".format(len(surf.poly.get_edges()), surf.fill))
+                print("len {} infill {}".format(len(surf.points), surf.fill))
         except Exception as e:
             print(e)
             continue   
@@ -304,10 +302,13 @@ def main():
         keys = [key for key in layers.keys() if float(key)<=val]
         for k in keys:
             for p in layers[k]:
-                draw_layer(p.poly.get_edges())
+                pass
+                # draw_layer(p.poly.get_edges())
 
     vpython.canvas(width=1500, height=1500)
     update_chart(max_z)
     while True:
         pass
-main()
+
+if __name__ == "main":
+    main()

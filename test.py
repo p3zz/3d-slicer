@@ -1,5 +1,5 @@
 import unittest
-from main import intersect_segment_plane, intersect_polygon_plane, check_consecutive, check_parallel, Segment, Point, Polygon, surfaces_from_segments
+from main import intersect_segment_plane, intersect_polygon_plane, check_consecutive, check_parallel, Segment, Point, Polygon, surfaces_from_segments, parse_stl
 
 class TestGeometry(unittest.TestCase):
 
@@ -128,7 +128,7 @@ class TestGeometry(unittest.TestCase):
         segments = [Segment(Point(0,0,0), Point(1,0,0), Point(0,1,0)), Segment(Point(1,0,0), Point(1,1,0), Point(1,0,0)), Segment(Point(1,1,0), Point(0,0,0), Point(-0.5,-0.5,0)), Segment(Point(-4,0,0), Point(-2,0,0), Point(0,0,0))]
         result = surfaces_from_segments(segments)
         self.assertEqual(len(result),1)
-        self.assertEqual(len(result[0].poly.get_edges()),3)
+        self.assertEqual(len(result[0].points),3)
     
     # def test_optimize_segments_4(self):
 
@@ -179,6 +179,50 @@ class TestGeometry(unittest.TestCase):
     #     result = surfaces_from_segments(segments)
     #     self.assertEqual(len(result), 1)
     #     self.assertEqual(len(result[0].poly.get_edges()), 4)
+
+    def test_workflow_1(self):
+        polygons = parse_stl("examples/cube.stl")
+        self.assertEqual(len(polygons), 12)
+        segments = []
+        for p in polygons:
+            segments += intersect_polygon_plane(p, 0)
+        self.assertEqual(len(segments), 8)
+        surfaces = surfaces_from_segments(segments)
+        self.assertEqual(len(surfaces), 1)
+        surf = surfaces[0]
+        self.assertEqual(len(surf.points), 4)
+        self.assertEqual(surf.fill, True)
+
+    def test_workflow_2(self):
+        polygons = parse_stl("examples/holed_cube.stl")
+        self.assertEqual(len(polygons), 32)
+        segments = []
+        for p in polygons:
+            segments += intersect_polygon_plane(p, 0)
+        self.assertEqual(len(segments), 16)
+        surfaces = surfaces_from_segments(segments)
+
+        surf = surfaces[0]
+
+        self.assertEqual(len(surf.points), 4)
+
+        self.assertEqual(surf.points[0], Point(-1,1,0))
+        self.assertEqual(surf.points[1], Point(1,1,0))
+        self.assertEqual(surf.points[2], Point(1,-1,0))
+        self.assertEqual(surf.points[3], Point(-1,-1,0))
+
+        self.assertTrue(surf.fill)
+
+        surf = surfaces[1]
+
+        self.assertEqual(len(surf.points), 4)
+        self.assertEqual(surf.points[0], Point(-0.278029,0.278029,0))
+        self.assertEqual(surf.points[1], Point(0.278029,0.278029,0))
+        self.assertEqual(surf.points[2], Point(0.278029,-0.278029,0))
+        self.assertEqual(surf.points[3], Point(-0.278029,-0.278029,0))
+
+        self.assertFalse(surf.fill)
+
 
 def main():
     unittest.main()
