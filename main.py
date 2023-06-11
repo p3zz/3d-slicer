@@ -7,7 +7,7 @@ from matplotlib.widgets import Slider
 import re
 import numpy as np
 import sys
-from math import atan2, pi, sqrt, acos
+from math import atan2, pi
 
 class Point:
     def __init__(self,x,y,z):
@@ -31,7 +31,7 @@ class Segment:
         return (self.p == value.p and self.q == value.q) or (self.p == value.q and self.q == value.p)
     
     def __str__(self):
-        return 'p: {} q: {}\n'.format(self.p, self.q)
+        return 'p: {} q: {} normal: {}\n'.format(self.p, self.q, self.normal)
     
     def get_displacement(self)->Point:
         dx = global_round(self.q.x - self.p.x)
@@ -187,6 +187,9 @@ def surfaces_from_segments(segments: list[Segment]):
                     surface_edges.pop(-1)
                 normal = Segment(Point(0,0,0), surface_edges[0].normal, surface_edges[0].normal)
                 fill = angle_between_segments(surface_edges[0], normal) < pi
+                # print("Polygon\n")
+                # for s in surface_edges:
+                    # print(s)
                 points = remove_duplicates(flatten([[s.p,s.q] for s in surface_edges]))
                 points = sort_clockwise(points)
                 surfaces.append(Surface(points, fill))
@@ -241,23 +244,16 @@ def check_parallel(s1: Segment, s2: Segment) -> bool:
 def global_round(val: float) -> float:
     return round(val, 6)
 
+def mod2pi(angle: float) -> float:
+    angle = angle % (2*pi)
+    if angle<0:
+        return angle + (2*pi)
+    return angle
+
 def angle_between_segments(s1: Segment, s2: Segment):
-    # Calculate the vectors of the line segments
-    u = s1.get_displacement()
-    v = s2.get_displacement()
-
-    # Calculate the dot product of the vectors
-    dot_product = u.x * v.x + u.y * v.y
-
-    # Calculate the lengths of the vectors
-    length_u = sqrt(u.x ** 2 + u.y ** 2)
-    length_v = sqrt(v.x ** 2 + v.y ** 2)
-
-    if length_u == 0 or length_v == 0:
-        return None
-
-    # Calculate the angle between the vectors using the dot product formula
-    return acos(dot_product / (length_u * length_v))
+    a1 = mod2pi(atan2(s1.q.y - s1.p.y, s1.q.x - s1.p.x))
+    a2 = mod2pi(atan2(s2.q.y - s2.p.y, s2.q.x - s2.p.x))
+    return mod2pi(a2-a1)
 
 def main():
     if len(sys.argv)<2:
