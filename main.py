@@ -22,7 +22,7 @@ class Point:
         return 'x: {} y: {} z: {}'.format(self.x, self.y, self.z)
 
 class Segment:
-    def __init__(self, p: Point, q: Point, normal: Point):
+    def __init__(self, p: Point, q: Point, normal: Point = Point(0,0,0)):
         self.p = p
         self.q = q
         self.normal = normal
@@ -40,7 +40,7 @@ class Segment:
         return Point(dx, dy, dz)
 
 class Polygon:
-    def __init__(self, points: list[Point], normal: Point):
+    def __init__(self, points: list[Point], normal: Point = Point(0,0,0)):
         self.points = points
         self.normal = normal
     
@@ -188,7 +188,6 @@ def surfaces_from_segments(segments: list[Segment]):
                     polygon_edges.pop(-1)
                 normal = Segment(Point(0,0,0), polygon_edges[0].normal, polygon_edges[0].normal)
                 fill = angle_between_segments(polygon_edges[0], normal) < pi
-                print(angle_between_segments(polygon_edges[0], normal))
                 points = remove_duplicates(flatten([[s.p,s.q] for s in polygon_edges]))
                 points = sort_clockwise(points)
                 poly = Polygon(points, Point(0,0,0))
