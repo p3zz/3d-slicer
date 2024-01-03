@@ -7,22 +7,10 @@ from matplotlib.widgets import Slider
 import re
 import numpy as np
 import sys
-from math import atan2, pi
-
-class Point:
-    def __init__(self,x,y,z):
-        self.x = x
-        self.y = y
-        self.z = z
-    
-    def __eq__(self, value: object) -> bool:
-        return self.x == value.x and self.y == value.y and self.z == value.z
-    
-    def __str__(self):
-        return 'x: {} y: {} z: {}'.format(self.x, self.y, self.z)
+from math import atan2, pi, atan2
 
 class Segment:
-    def __init__(self, p: Point, q: Point, normal: Point = Point(0,0,0)):
+    def __init__(self, p, q, normal):
         self.p = p
         self.q = q
         self.normal = normal
@@ -33,14 +21,11 @@ class Segment:
     def __str__(self):
         return 'p: {} q: {} normal: {}\n'.format(self.p, self.q, self.normal)
     
-    def get_displacement(self)->Point:
-        dx = global_round(self.q.x - self.p.x)
-        dy = global_round(self.q.y - self.p.y)
-        dz = global_round(self.q.z - self.p.z)
-        return Point(dx, dy, dz)
+    def get_displacement(self):
+        return self.q - self.p
 
 class Polygon:
-    def __init__(self, points: list[Point], normal: Point = Point(0,0,0)):
+    def __init__(self, points, normal):
         self.points = points
         self.normal = normal
     
@@ -51,10 +36,24 @@ class Polygon:
         edges.append(Segment(self.points[-1], self.points[0], self.normal))
         return edges
 
-class Surface:
-    def __init__(self, points: list[Point], fill: bool):
-        self.points = points
-        self.fill = fill
+    def get_centroid(self):
+        return compute_centroid(self.points)
+
+def compute_centroid(points):
+    x = sum(p[0] for p in points) / len(points)
+    y = sum(p[1] for p in points) / len(points)
+    z = sum(p[2] for p in points) / len(points)
+    return np.array([x, y, z])
+
+def calculate_angle(point, centroid):
+    angle = atan2(point[1] - centroid[1], point[0] - centroid[0])
+    return angle % (2 * pi)
+
+def order_points_clockwise(points):
+    if len(points) == 0:
+        return []
+    centroid = compute_centroid(points)
+    return sorted(points, key=lambda p: calculate_angle(p, centroid))
 
 class ParserState:
     WaitingPoint = 0
@@ -74,10 +73,10 @@ def parse_stl(filename: str) -> list[Polygon]:
                 r = regex_normal.match(row)
                 if r:
                     d = r.groupdict()
-                    x = global_round(float(d["x"]))
-                    y = global_round(float(d["y"]))
-                    z = global_round(float(d["z"]))
-                    normal = Point(x,y,z)
+                    x = float(d["x"])
+                    y = float(d["y"])
+                    z = float(d["z"])
+                    normal = np.array([x,y,z])
                     state = ParserState.WaitingPoint
                 continue
             if state == ParserState.WaitingPoint:
@@ -88,10 +87,10 @@ def parse_stl(filename: str) -> list[Polygon]:
                 r = regex_point.match(row)
                 if r:
                     d = r.groupdict()
-                    x = global_round(float(d["x"]))
-                    y = global_round(float(d["y"]))
-                    z = global_round(float(d["z"]))
-                    points.append(Point(x,y,z))
+                    x = float(d["x"])
+                    y = float(d["y"])
+                    z = float(d["z"])
+                    points.append(np.array([x, y, z]))
                 if "endloop" in row:
                     if len(points) == 3:
                         # print(normal)
@@ -105,28 +104,26 @@ def parse_stl(filename: str) -> list[Polygon]:
 def flatten(list):
     return [item for sublist in list for item in sublist]
 
-def intersect_segment_plane(edge: Segment, z_level: float) -> list[Point]:
+def intersect_segment_plane(edge: Segment, z_level: float):
     d = edge.get_displacement()
     # if dz=0 the edge is parallel to the plane
-    if d.z == 0: 
-        if edge.q.z == z_level:
+    if d[2] == 0:
+        if edge.q[2] == z_level:
             return [edge.p, edge.q]
         else:
             return []
-    t = (z_level - edge.p.z) / d.z
-    if t<0 or t>1: return []
-    x = global_round(edge.p.x + t*d.x)
-    y = global_round(edge.p.y + t*d.y)
-    z = global_round(edge.p.z + t*d.z)
-    return [Point(x,y,z)]
+    
+    t = (z_level - edge.p[2]) / d[2]
+    if t<0 or t>1:
+        return []
+    
+    point = edge.p + (t * d)
+    return [point]
 
-def intersect_polygon_plane(poly: Polygon, z_level: float) -> list[Segment]:
-    # print(poly.normal)
-    if poly.normal.x == 0 and poly.normal.y == 0: return []
+def intersect_polygon_plane(poly: Polygon, z_level: float):
     points = flatten(list(map(lambda edge : intersect_segment_plane(edge, z_level), poly.get_edges())))
-    no_duplicate_points = remove_duplicates(points)
-    if len(no_duplicate_points) == 2: return [Segment(no_duplicate_points[0], no_duplicate_points[1], poly.normal)]
-    return []
+    points = remove_duplicates(points)
+    return order_points_clockwise(points)
 
 def draw_layer(layer: list[Segment]):
     for segment in layer:
@@ -141,89 +138,15 @@ def remove_duplicates(list):
             no_duplicates_list.append(elem)
     return no_duplicates_list
 
-# create a list of polygons using the available segments. A segment cannot compose more than 1 polygon.
-# segments that belong to the same line (so they are consecutive and parallel), are merged into a single segment 
-# If there is a segment that is shared between two polygons, throw an exception
-def surfaces_from_segments(segments: list[Segment]):
-    if len(segments) == 0: return []
-    edges = segments
-    current_edge = edges.pop(0)
-    surface_edges: list[Segment] = [current_edge]
-    surfaces: list[Surface] = []
-
-    while len(edges)>=0:
-        # search for edges that have a point in common with the current new edge
-        consecutive_edges_from_q = [edge for edge in edges if current_edge.q == edge.p or current_edge.q == edge.q]
-        consecutive_edges_from_p = [edge for edge in edges if current_edge.p == edge.p or current_edge.p == edge.q]
-        # if the edge has more than 1 segment in common on one of the two ends, throw an exception
-        if len(consecutive_edges_from_p) > 1 or len(consecutive_edges_from_q) > 1:
-            raise Exception("Invalid mesh")
-        if len(consecutive_edges_from_p) == 1 and (len(consecutive_edges_from_q) == 0 or len(consecutive_edges_from_q) == 1):
-            found_edge = consecutive_edges_from_p[0]
-        elif len(consecutive_edges_from_p) == 0 and len(consecutive_edges_from_q) == 1:
-            found_edge = consecutive_edges_from_q[0]
-        else:
-            found_edge = None
-        
-        if found_edge is not None:
-            found_edge_idx = edges.index(found_edge)
-            # if it's colinear we merge it with the current edge and we update the last edge of the polygon
-            if check_parallel(current_edge, found_edge):
-                current_edge = merge_consecutive_parallel(current_edge, found_edge)
-                surface_edges[-1] = current_edge
-            # otherwise we add it as a normal edge of the current polygon
-            else:
-                current_edge = found_edge
-                surface_edges.append(found_edge)
-            
-            edges.pop(found_edge_idx)
-            # then we check if the updated current edge is the end of the polygon
-            # we need at least 3 edges to complete a polygon
-            if len(surface_edges) > 2 and check_consecutive(surface_edges[0], current_edge):
-                # it can happen that the last edged of the polygon and the first are colinear. In this case
-                # merge them and update the first edge, then delete the last edge
-                if check_parallel(surface_edges[0], current_edge):
-                    surface_edges[0] = merge_consecutive_parallel(surface_edges[0], current_edge)
-                    surface_edges.pop(-1)
-                normal = Segment(Point(0,0,0), surface_edges[0].normal, surface_edges[0].normal)
-                fill = angle_between_segments(surface_edges[0], normal) < pi
-                # print("Polygon\n")
-                # for s in surface_edges:
-                    # print(s)
-                points = remove_duplicates(flatten([[s.p,s.q] for s in surface_edges]))
-                points = sort_clockwise(points)
-                surfaces.append(Surface(points, fill))
-                if len(edges) == 0: break
-                current_edge = edges.pop(0)
-                surface_edges = [current_edge]
-        else:
-            if len(edges) == 0: break
-            current_edge = edges.pop(0)
-            surface_edges = [current_edge]
-
-    return surfaces
-
-def merge_consecutive_parallel(s1: Segment, s2: Segment) -> Segment:
-    if s1.q == s2.p:
-        return Segment(s1.p, s2.q, s1.normal)
-    elif s1.q == s2.q:
-        return Segment(s1.p, s2.p, s1.normal)
-    elif s1.p == s2.q:
-        return Segment(s2.p, s1.q, s1.normal)
-    else:
-        return Segment(s2.q, s1.q, s1.normal)
-
-def centroid(points: list[Point]) -> Point:
-     x_list = [vertex.x for vertex in points]
-     y_list = [vertex.y for vertex in points]
-     l = len(points)
-     x = sum(x_list) / l
-     y = sum(y_list) / l
-     return Point(x, y, 0)
-
-def sort_clockwise(points: list[Point]) -> list[Point]:
-    c = centroid(points)
-    return sorted(points, key=lambda p: atan2(p.y - c.y, p.x - c.x), reverse=True)
+# def merge_consecutive_parallel(s1: Segment, s2: Segment) -> Segment:
+#     if s1.q == s2.p:
+#         return Segment(s1.p, s2.q, s1.normal)
+#     elif s1.q == s2.q:
+#         return Segment(s1.p, s2.p, s1.normal)
+#     elif s1.p == s2.q:
+#         return Segment(s2.p, s1.q, s1.normal)
+#     else:
+#         return Segment(s2.q, s1.q, s1.normal)
 
 def check_consecutive(s1: Segment, s2: Segment) -> bool:
     return s1.q == s2.p or s1.p == s2.q or s1.q == s2.q or s1.p == s2.p
