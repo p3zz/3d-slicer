@@ -10,13 +10,13 @@ import sys
 from math import atan2, pi, atan2
 
 class Segment:
-    def __init__(self, p, q, normal):
+    def __init__(self, p, q, normal = np.array([1, 0, 0])):
         self.p = p
         self.q = q
         self.normal = normal
     
     def __eq__(self, value: object) -> bool:
-        return (self.p == value.p and self.q == value.q) or (self.p == value.q and self.q == value.p)
+        return (np.array_equal(self.p, value.p) and np.array_equal(self.q, value.q)) or (np.array_equal(self.p, value.q) and np.array_equal(self.q, value.p))
 
     def __ne__(self, value: object) -> bool:
         return not self.__eq__(value)
@@ -28,7 +28,7 @@ class Segment:
         return self.q - self.p
 
 class Polygon:
-    def __init__(self, points, normal):
+    def __init__(self, points, normal = np.array([1, 0, 0])):
         self.points = points
         self.normal = normal
     
@@ -128,8 +128,8 @@ def parse_stl(filename: str) -> list[Polygon]:
 def intersect_segment_plane(edge: Segment, z_level: float):
     d = edge.get_displacement()
     # if dz=0 the edge is parallel to the plane
-    if d[2] == 0:
-        if edge.q[2] == z_level:
+    if global_round(d[2]) == 0:
+        if edge.q[2] == z_level or edge.p[2] == z_level:
             return [edge.p, edge.q]
         else:
             return []
@@ -141,10 +141,33 @@ def intersect_segment_plane(edge: Segment, z_level: float):
     point = edge.p + (t * d)
     return [point]
 
+# polygons are triangles
+# there are 4 cases:
+# 1 - the triangle intersects the z plane with 1 edge: in this case, the intersections will be 1 edge and 2 points, 
+# which are the ends of the edge that are the intersections between the other two edges and the z plane
+# 2 - the triangle fully stays in the plane: in this case, the intersection will be 3 edges and 0 points
+# 3 - the triangle is split in 2 halfs by the plane: in this case, the intersections will be 2 points,
+# that must become a single edge
+# 4 - the triangle intersects the z plane in vertex: in this case, the intersections will be 1 point
+# 5 - the triangle doesn't interect the plane at all: in this case, the interection will be 0 points
 def intersect_polygon_plane(poly: Polygon, z_level: float):
-    points = flatten(list(map(lambda edge : intersect_segment_plane(edge, z_level), poly.get_edges())))
-    points = remove_duplicates(points)
-    return order_points_clockwise(points)
+    intersections = [intersect_segment_plane(edge, z_level) for edge in poly.get_edges()]
+    intersections = [s for s in intersections if len(s) > 0]
+    
+    if len(intersections) == 3:
+        if intersections[0] == 2 and intersections[1] == 1 and intersections[1] == 1:
+            intersections = [intersections[0]]
+        elif intersections[1] == 2 and intersections[0] == 1 and intersections[2] == 1:
+            intersections = [intersections[1]]
+        elif intersections[2] == 2 and intersections[0] == 1 and intersections[1] == 1:
+            intersections = [intersections[2]]
+    
+    elif len(intersections) == 2:
+        intersections = [flatten(intersections[0])]
+    
+    return intersections
+    # points = remove_duplicates(points)
+    # return order_points_clockwise(points)
 
 # def draw_layer(layer: list[Segment]):
 #     for segment in layer:
@@ -193,13 +216,18 @@ def main():
     for z in np.arange(min_z, max_z, step):
         z = global_round(z)
         key = str(z)
-        # layers[key] = []
-        layer_segments = []
+        layers[key] = []
+        # layer_segments = []
+        print(f'layer: {z}')
         for poly in model:
             segments = intersect_polygon_plane(poly, z)
-            layer_segments += segments
-        layer_segments = remove_duplicates(layer_segments)
-        print("Segments found: ",len(layer_segments))
+            if len(segments) > 0:
+                for e in poly.get_edges():
+                    print(e)
+                print(f'Segments: {segments}')
+            # layer_segments += segments
+        # layer_segments = remove_duplicates(layer_segments)
+        # print("Segments found: ",len(layer_segments))
         # non_optimized_layers+=len(layers[key])
         # print("Original Layer [{}] has {} edges".format(key, len(layers[key])))
         # try:
