@@ -229,21 +229,19 @@ def main():
     # non_optimized_layers = 0
     # optimized_layers = 0
     step = 0.05
-    for z in np.arange(min_z, max_z, step):
+    for z in np.arange(min_z, max_z + step, step):
         z = global_round(z)
         key = str(z)
         layers[key] = []
-        # layer_segments = []
+        layer_intersections = []
         print(f'layer: {z}')
         for poly in model:
             segments = intersect_polygon_plane(poly, z)
             if len(segments) > 0:
-                for e in poly.get_edges():
-                    print(e)
-                print(f'Segments: {segments}')
-            # layer_segments += segments
-        # layer_segments = remove_duplicates(layer_segments)
-        # print("Segments found: ",len(layer_segments))
+                # print(f'Segments: {segments}')
+                layer_intersections += segments
+        # layer_intersections = remove_duplicates(layer_intersections)
+        print("Segments found: ",len(layer_intersections))
         # non_optimized_layers+=len(layers[key])
         # print("Original Layer [{}] has {} edges".format(key, len(layers[key])))
         # try:
