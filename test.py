@@ -3,25 +3,41 @@ from main import intersect_segment_plane, intersect_polygon_plane, check_paralle
 import numpy as np
 
 class TestIntesectPolygonPlane(unittest.TestCase):
+    # no intersections
     def test_intersect_polygon_plane_1(self):
         p = Polygon([np.array([1,0,0]), np.array([1,1,0]), np.array([0,1,0])])
         intersections = intersect_polygon_plane(p, 1)
-        self.assertTrue(len(intersections) == 0)
+        self.assertEqual(len(intersections), 0)
 
+    # whole polygon stays in the plane
     def test_intersect_polygon_plane_2(self):
         p = Polygon([np.array([1,0,0]), np.array([1,1,0]), np.array([0,1,0])])
         interections = intersect_polygon_plane(p, 0)
-        self.assertTrue(len(interections) == 3)
+        self.assertEqual(len(interections), 3)
+        self.assertEqual(len(interections[0]), 2)
+        self.assertEqual(len(interections[1]), 2)
+        self.assertEqual(len(interections[2]), 2)
 
+    # polygon split in halfs
     def test_intersect_polygon_plane_3(self):
         p = Polygon([np.array([1,0,0]), np.array([1,1,0]), np.array([1,1,1])], np.array([1,0,0]))
         interections = intersect_polygon_plane(p, 0.5)
         self.assertEqual(len(interections), 1)
+        self.assertEqual(len(interections[0]), 2)
     
+    # polygon intersects in a single vertex
     def test_intersect_polygon_plane_4(self):
         p = Polygon([np.array([1,0,0]), np.array([1,1,0]), np.array([0,0,1])])
         interections = intersect_polygon_plane(p, 1)
-        self.assertTrue(len(interections) == 1)
+        self.assertEqual(len(interections), 1)
+        self.assertEqual(len(interections[0]), 1)
+    
+    # polygon intersects in a single vertex
+    def test_intersect_polygon_plane_5(self):
+        p = Polygon([np.array([1,0,0]), np.array([0,0,0.5]), np.array([1,0,1])])
+        interections = intersect_polygon_plane(p, 0.5)
+        self.assertEqual(len(interections), 1)
+        self.assertEqual(len(interections[0]), 2)
 
 class TestIntersectSegmentPlane(unittest.TestCase):
     def test_intersect_segment_plane_1(self):

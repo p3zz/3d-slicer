@@ -142,28 +142,35 @@ def intersect_segment_plane(edge: Segment, z_level: float):
     return [point]
 
 # polygons are triangles
-# there are 4 cases:
+# there are several cases:
 # 1 - the triangle intersects the z plane with 1 edge: in this case, the intersections will be 1 edge and 2 points, 
 # which are the ends of the edge that are the intersections between the other two edges and the z plane
 # 2 - the triangle fully stays in the plane: in this case, the intersection will be 3 edges and 0 points
 # 3 - the triangle is split in 2 halfs by the plane: in this case, the intersections will be 2 points,
 # that must become a single edge
-# 4 - the triangle intersects the z plane in vertex: in this case, the intersections will be 1 point
+# 4 - the triangle intersects the z plane in 1 vertex: in this case, the intersections will be 2 points, one for each segments, that must be merged in 1 single point
 # 5 - the triangle doesn't interect the plane at all: in this case, the interection will be 0 points
+# 6 - the triangle intersects the z plane in 1 vertex and 1 edge: in this case, the intersections will be 3 point, 2 equals (like case 4, must be merged in 1 single), and another point.
+# These 2 must become a single edge
+
 def intersect_polygon_plane(poly: Polygon, z_level: float):
+    # get intersections
     intersections = [intersect_segment_plane(edge, z_level) for edge in poly.get_edges()]
+    # remove empty intersections
     intersections = [s for s in intersections if len(s) > 0]
-    
-    if len(intersections) == 3:
-        if intersections[0] == 2 and intersections[1] == 1 and intersections[1] == 1:
-            intersections = [intersections[0]]
-        elif intersections[1] == 2 and intersections[0] == 1 and intersections[2] == 1:
-            intersections = [intersections[1]]
-        elif intersections[2] == 2 and intersections[0] == 1 and intersections[1] == 1:
-            intersections = [intersections[2]]
-    
-    elif len(intersections) == 2:
-        intersections = [flatten(intersections[0])]
+
+    # remove single point duplicates
+    single_point_intersections = [s for s in intersections if len(s) == 1]
+    single_point_intersections = remove_duplicates(single_point_intersections, lambda a,b: np.array_equal(a[0], b[0]))
+
+    double_point_intersections = [s for s in intersections if len(s) == 2]
+
+    if double_point_intersections == 1:
+        intersections = double_point_intersections
+    elif len(single_point_intersections) == 2:
+        intersections = [flatten(single_point_intersections)]
+    else:
+        intersections = [*single_point_intersections, *double_point_intersections]
     
     return intersections
     # points = remove_duplicates(points)
@@ -175,8 +182,17 @@ def intersect_polygon_plane(poly: Polygon, z_level: float):
 #         vpython.sphere(pos=vpython.vector(segment.q.x, segment.q.y, segment.q.z),radius=0.02)
         # vpython.curve(vpython.vector(segment.p.x, segment.p.y, segment.p.z), vpython.vector(segment.q.x, segment.q.y, segment.q.z))
 
-def remove_duplicates(l):
-    return list(set(l))
+def remove_duplicates(l, pred):
+    no_duplicates = []
+    for elem in l:
+        found = False
+        for elem2 in no_duplicates:
+            if pred(elem, elem2):
+                found = True
+        if not found:
+            no_duplicates.append(elem)
+    
+    return no_duplicates
 
 def flatten(list):
     return [item for sublist in list for item in sublist]
